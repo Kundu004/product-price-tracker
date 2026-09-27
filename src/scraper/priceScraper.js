@@ -148,6 +148,7 @@ async function scrapePrice({ storeProductId, optionLabel, headed = false }) {
         // one) — "RETRY"/"CHECK AGAIN" have no such gate. We perform
         // real, CDP-dispatched mouse movement — exactly the kind of
         // trusted input event a plain HTTP request cannot produce.
+        await dismissConsentIfPresent();
         const box = await btn.boundingBox();
         if (box) {
           for (let m = 0; m < 10; m++) {
