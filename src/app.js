@@ -5,6 +5,7 @@ const healthRoute = require('./routes/health');
 const trackedProductsRoute = require('./routes/trackedProducts');
 const productsRoute = require('./routes/products');
 const scrapeRoute = require('./routes/scrape');
+const exportRoute = require('./routes/export');
 
 const app = express();
 
@@ -25,5 +26,6 @@ app.use('/api/health', healthRoute);
 app.use('/api/tracked-products', trackedProductsRoute);
 app.use('/api/products', productsRoute);
 app.use('/api/scrape', scrapeRoute);
+app.use('/api/export', exportRoute);
 
 module.exports = app;

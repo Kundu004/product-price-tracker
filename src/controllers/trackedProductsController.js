@@ -7,8 +7,6 @@ const supabase = require('../config/supabaseClient');
 async function createTrackedProduct(req, res) {
   const { storeProductId, productName, selectedOption, optionLabel } = req.body;
 
-  // Basic validation — every field here is required to have a meaningful
-  // tracked product; there's no reasonable default for any of them.
   if (!storeProductId || !productName || !selectedOption) {
     return res.status(400).json({
       error: 'storeProductId, productName, and selectedOption are required.',
@@ -27,7 +25,6 @@ async function createTrackedProduct(req, res) {
     .single();
 
   if (error) {
-    // Postgres unique_violation code — this product+option combo is already tracked.
     if (error.code === '23505') {
       return res.status(409).json({
         error: 'This product and option is already being tracked.',
@@ -59,9 +56,7 @@ async function listTrackedProducts(req, res) {
 
 /**
  * DELETE /api/tracked-products/:id
- * Soft delete — sets is_active = false. Scrape history is preserved
- * (see Phase 2 design note: hard delete would cascade and destroy real
- * accumulated history, which we don't want).
+ * Soft delete — sets is_active = false. Scrape history is preserved.
  */
 async function untrackProduct(req, res) {
   const { id } = req.params;
@@ -84,8 +79,56 @@ async function untrackProduct(req, res) {
   res.json(data);
 }
 
+/**
+ * GET /api/tracked-products/:id/history
+ * Price/stock history for one product — successful and retried scrapes
+ * only (a 'failed' attempt never captured a real price/stock reading,
+ * so it has nothing meaningful to plot on a history chart). Full attempt
+ * log including failures is at GET /:id/logs instead.
+ */
+async function getTrackedProductHistory(req, res) {
+  const { id } = req.params;
+
+  const { data, error } = await supabase
+    .from('scrape_attempts')
+    .select('attempted_at, price, stock, outcome, retry_count')
+    .eq('tracked_product_id', id)
+    .neq('outcome', 'failed')
+    .order('attempted_at', { ascending: true });
+
+  if (error) {
+    return res.status(500).json({ error: error.message });
+  }
+
+  res.json(data);
+}
+
+/**
+ * GET /api/tracked-products/:id/logs
+ * Full scrape attempt log for one product — every attempt regardless of
+ * outcome, including failures with their error_reason. This is the
+ * transparency/reliability view the assignment specifically asks for.
+ */
+async function getTrackedProductLogs(req, res) {
+  const { id } = req.params;
+
+  const { data, error } = await supabase
+    .from('scrape_attempts')
+    .select('id, attempted_at, outcome, retry_count, price, stock, error_reason')
+    .eq('tracked_product_id', id)
+    .order('attempted_at', { ascending: false });
+
+  if (error) {
+    return res.status(500).json({ error: error.message });
+  }
+
+  res.json(data);
+}
+
 module.exports = {
   createTrackedProduct,
   listTrackedProducts,
   untrackProduct,
+  getTrackedProductHistory,
+  getTrackedProductLogs,
 };
