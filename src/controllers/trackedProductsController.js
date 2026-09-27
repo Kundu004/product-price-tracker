@@ -26,9 +26,47 @@ async function createTrackedProduct(req, res) {
 
   if (error) {
     if (error.code === '23505') {
-      return res.status(409).json({
-        error: 'This product and option is already being tracked.',
-      });
+      // The unique constraint on (store_product_id, selected_option) isn't
+      // scoped to is_active — untracking is a soft delete, so the old row
+      // still exists and blocks a fresh insert. If that row is inactive,
+      // this is really a "re-track" request: reactivate it instead of
+      // failing, so history in scrape_attempts stays linked to the same
+      // tracked_product_id rather than needing a new row (which the
+      // unique constraint would block anyway).
+      const { data: existing, error: fetchError } = await supabase
+        .from('tracked_products')
+        .select('id, is_active')
+        .eq('store_product_id', String(storeProductId))
+        .eq('selected_option', selectedOption)
+        .single();
+
+      if (fetchError) {
+        return res.status(500).json({ error: fetchError.message });
+      }
+
+      if (existing.is_active) {
+        return res.status(409).json({
+          error: 'This product and option is already being tracked.',
+        });
+      }
+
+      const { data: reactivated, error: reactivateError } = await supabase
+        .from('tracked_products')
+        .update({
+          is_active: true,
+          product_name: productName,
+          option_label: optionLabel || null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', existing.id)
+        .select()
+        .single();
+
+      if (reactivateError) {
+        return res.status(500).json({ error: reactivateError.message });
+      }
+
+      return res.status(200).json(reactivated);
     }
     return res.status(500).json({ error: error.message });
   }
